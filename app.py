@@ -21,7 +21,7 @@ if not os.path.exists(ckpt_path):
     ckpt_path = 'model/lia-x.pt'
     assert os.path.exists(ckpt_path)
 gen.load_state_dict(torch.load(ckpt_path, weights_only=True))
-gen.eval().to(torch.float16) 
+#gen.eval().to(torch.float16) 
 torch.cuda.empty_cache()
 
 chunk_size=8 # number of frames to be generated at the same time
