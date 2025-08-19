@@ -6,194 +6,196 @@ import numpy as np
 from tqdm import tqdm
 from einops import rearrange, repeat
 
+def tup2t(tup):
+    return torch.tensor(tup, dtype=torch.half, device='cuda', requires_grad=False).unsqueeze(0)
 
 class Generator(nn.Module):
-	def __init__(self, size, style_dim=512, motion_dim=40, scale=1):
-		super(Generator, self).__init__()
+    def __init__(self, size, style_dim=512, motion_dim=40, scale=1):
+        super(Generator, self).__init__()
 
-		style_dim = style_dim * scale
+        style_dim = style_dim * scale
 
-		# encoder
-		self.enc = Encoder(style_dim, motion_dim, scale)
-		self.dec = Decoder(style_dim, motion_dim, scale)
-	
-	def get_alpha(self, x):
-		return self.enc.enc_motion(x)
+        # encoder
+        self.enc = Encoder(style_dim, motion_dim, scale)
+        self.dec = Decoder(style_dim, motion_dim, scale)
+    
+    def get_alpha(self, x):
+        return self.enc.enc_motion(x)
 
-	def edit_img(self, img_source, d_l, v_l):
+    def edit_img(self, img_source, d_l, v_l):
 
-		z_s2r, feat_rgb = self.enc.enc_2r(img_source)
-		alpha_r2s = self.enc.enc_r2t(z_s2r)
-		alpha_r2s[:, d_l] = alpha_r2s[:, d_l] + torch.FloatTensor(v_l).unsqueeze(0).to('cuda')
-		img_recon = self.dec(z_s2r, [alpha_r2s], feat_rgb)
+        z_s2r, feat_rgb = self.enc.enc_2r(img_source)
+        alpha_r2s = self.enc.enc_r2t(z_s2r)
+        alpha_r2s[:, d_l] = alpha_r2s[:, d_l] + tup2t(v_l)
+        img_recon = self.dec(z_s2r, [alpha_r2s], feat_rgb)
 
-		return img_recon
+        return img_recon
 
-	def animate(self, img_source, vid_target, d_l, v_l):
+    def animate(self, img_source, vid_target, d_l, v_l):
 
-		alpha_start = self.get_alpha(vid_target[:, 0, :, :, :])
+        alpha_start = self.get_alpha(vid_target[:, 0, :, :, :])
 
-		vid_target_recon = []
-		z_s2r, feat_rgb = self.enc.enc_2r(img_source)
-		alpha_r2s = self.enc.enc_r2t(z_s2r)
-		alpha_r2s[:, d_l] = alpha_r2s[:, d_l] + torch.FloatTensor(v_l).unsqueeze(0).to('cuda')
+        vid_target_recon = []
+        z_s2r, feat_rgb = self.enc.enc_2r(img_source)
+        alpha_r2s = self.enc.enc_r2t(z_s2r)
+        alpha_r2s[:, d_l] = alpha_r2s[:, d_l] + tup2t(v_l)
 
-		for i in tqdm(range(vid_target.size(1))):
-			img_target = vid_target[:, i, :, :, :]
-			alpha = self.enc.enc_transfer_vid(alpha_r2s, img_target, alpha_start)
-			img_recon = self.dec(z_s2r, alpha, feat_rgb)
-			vid_target_recon.append(img_recon.unsqueeze(2))
-		vid_target_recon = torch.cat(vid_target_recon, dim=2) # BCTHW
+        for i in tqdm(range(vid_target.size(1))):
+            img_target = vid_target[:, i, :, :, :]
+            alpha = self.enc.enc_transfer_vid(alpha_r2s, img_target, alpha_start)
+            img_recon = self.dec(z_s2r, alpha, feat_rgb)
+            vid_target_recon.append(img_recon.unsqueeze(2))
+        vid_target_recon = torch.cat(vid_target_recon, dim=2) # BCTHW
 
-		return vid_target_recon
+        return vid_target_recon
 
-	def animate_batch(self, img_source, vid_target, d_l, v_l, chunk_size):
-		# img_source: TxCHW
-		# vid_target: 1xTCHW
-		
-		b,t,c,h,w = vid_target.size()
-		alpha_start = self.get_alpha(vid_target[:, 0, :, :, :]) # 1x40
+    def animate_batch(self, img_source, vid_target, d_l, v_l, chunk_size):
+        # img_source: TxCHW
+        # vid_target: 1xTCHW
 
-		z_s2r, feat_rgb = self.enc.enc_2r(img_source)
-		alpha_r2s = self.enc.enc_r2t(z_s2r)
-		alpha_r2s[:, d_l] = alpha_r2s[:, d_l] + torch.FloatTensor(v_l).unsqueeze(0).to('cuda')
-		
-		bs = chunk_size
-		chunks = t//bs
-		
-		alpha_start_r = repeat(alpha_start, 'b c -> (repeat b) c', repeat=bs)
-		alpha_r2s_r = repeat(alpha_r2s, 'b c -> (repeat b) c', repeat=bs)
-		feat_rgb_r = [repeat(feat, 'b c h w -> (repeat b) c h w', repeat=bs) for feat in feat_rgb]
-		z_s2r_r = repeat(z_s2r, 'b c -> (repeat b) c', repeat=bs)
+        b,t,c,h,w = vid_target.size()
+        alpha_start = self.get_alpha(vid_target[:, 0, :, :, :]) # 1x40
 
-		vid_target_recon = []
-		for i in range(chunks+1):
-			if i == chunks:
-				img_target = vid_target[:, i*bs:, :, :, :]
-				bs = t-i*bs
-				alpha_start_r = alpha_start_r[:bs] #alpha_start.repeat(bs,1)
-				alpha_r2s_r = alpha_r2s_r[:bs] #alpha_r2s.repeat(bs,1)
-				feat_rgb_r = [feat[:bs] for feat in feat_rgb_r]#[feat.repeat(bs,1,1,1) for feat in feat_rgb]
-				z_s2r_r = z_s2r_r[:bs] #z_s2r.repeat(bs,1)
-			else:
-				img_target = vid_target[:, i*bs:(i+1)*bs, :, :, :]
+        z_s2r, feat_rgb = self.enc.enc_2r(img_source)
+        alpha_r2s = self.enc.enc_r2t(z_s2r)
+        alpha_r2s[:, d_l] = alpha_r2s[:, d_l] + tup2t(v_l)
+        
+        bs = chunk_size # 8
+        chunks = t//bs # 119//8 = 14
+        
+        alpha_start_r = repeat(alpha_start, 'b c -> (repeat b) c', repeat=bs)
+        alpha_r2s_r = repeat(alpha_r2s, 'b c -> (repeat b) c', repeat=bs)
+        feat_rgb_r = [repeat(feat, 'b c h w -> (repeat b) c h w', repeat=bs) for feat in feat_rgb]
+        z_s2r_r = repeat(z_s2r, 'b c -> (repeat b) c', repeat=bs)
 
-			alpha = self.enc.enc_transfer_vid(alpha_r2s_r, img_target.squeeze(0), alpha_start_r)
-			img_recon = self.dec(z_s2r_r, alpha, feat_rgb_r) # bs x 3 x h x w
-			vid_target_recon.append(img_recon)
-		vid_target_recon = torch.cat(vid_target_recon, dim=0).unsqueeze(0) # 1xTCHW
-		vid_target_recon = rearrange(vid_target_recon, 'b t c h w -> b c t h w')
+        vid_target_recon = []
+        for i in range(chunks+1):
+            if i == chunks:
+                img_target = vid_target[:, i*bs:, :, :, :]
+                bs = t-i*bs
+                alpha_start_r = alpha_start_r[:bs] #alpha_start.repeat(bs,1)
+                alpha_r2s_r = alpha_r2s_r[:bs] #alpha_r2s.repeat(bs,1)
+                feat_rgb_r = [feat[:bs] for feat in feat_rgb_r]#[feat.repeat(bs,1,1,1) for feat in feat_rgb]
+                z_s2r_r = z_s2r_r[:bs] #z_s2r.repeat(bs,1)
+            else:
+                img_target = vid_target[:, i*bs:(i+1)*bs, :, :, :]
 
-		return vid_target_recon # BCTHW
+            alpha = self.enc.enc_transfer_vid(alpha_r2s_r, img_target.squeeze(0), alpha_start_r)
+            img_recon = self.dec(z_s2r_r, alpha, feat_rgb_r) # bs x 3 x h x w
+            vid_target_recon.append(img_recon)
+        vid_target_recon = torch.cat(vid_target_recon, dim=0).unsqueeze(0) # 1xTCHW
+        vid_target_recon = rearrange(vid_target_recon, 'b t c h w -> b c t h w')
 
-	def edit_vid(self, vid_target, d_l, v_l):
+        return vid_target_recon # BCTHW
 
-		img_source = vid_target[:, 0, :, :, :]
-		alpha_start = self.get_alpha(vid_target[:, 0, :, :, :])
+    def edit_vid(self, vid_target, d_l, v_l):
 
-		vid_target_recon = []
-		z_s2r, feat_rgb = self.enc.enc_2r(img_source)
-		alpha_r2s = self.enc.enc_r2t(z_s2r)
-		alpha_r2s[:, d_l] = alpha_r2s[:, d_l] + torch.FloatTensor(v_l).unsqueeze(0).to('cuda')
+        img_source = vid_target[:, 0, :, :, :]
+        alpha_start = self.get_alpha(vid_target[:, 0, :, :, :])
 
-		for i in tqdm(range(vid_target.size(1))):
-			img_target = vid_target[:, i, :, :, :]
-			alpha = self.enc.enc_transfer_vid(alpha_r2s, img_target, alpha_start)
-			img_recon = self.dec(z_s2r, alpha, feat_rgb)
-			vid_target_recon.append(img_recon.unsqueeze(2))
-		vid_target_recon = torch.cat(vid_target_recon, dim=2) # BCTHW
+        vid_target_recon = []
+        z_s2r, feat_rgb = self.enc.enc_2r(img_source)
+        alpha_r2s = self.enc.enc_r2t(z_s2r)
+        alpha_r2s[:, d_l] = alpha_r2s[:, d_l] + tup2t(v_l)
 
-		return vid_target_recon
+        for i in tqdm(range(vid_target.size(1))):
+            img_target = vid_target[:, i, :, :, :]
+            alpha = self.enc.enc_transfer_vid(alpha_r2s, img_target, alpha_start)
+            img_recon = self.dec(z_s2r, alpha, feat_rgb)
+            vid_target_recon.append(img_recon.unsqueeze(2))
+        vid_target_recon = torch.cat(vid_target_recon, dim=2) # BCTHW
 
-	def edit_vid_batch(self, vid_target, d_l, v_l, chunk_size):
+        return vid_target_recon
 
-		b, t, c, h, w = vid_target.size()
-		img_source = vid_target[:, 0, :, :, :]
-		alpha_start = self.get_alpha(vid_target[:, 0, :, :, :])
+    def edit_vid_batch(self, vid_target, d_l, v_l, chunk_size):
 
-		z_s2r, feat_rgb = self.enc.enc_2r(img_source)
-		alpha_r2s = self.enc.enc_r2t(z_s2r)
-		alpha_r2s[:, d_l] = alpha_r2s[:, d_l] + torch.FloatTensor(v_l).unsqueeze(0).to('cuda')
+        b, t, c, h, w = vid_target.size()
+        img_source = vid_target[:, 0, :, :, :]
+        alpha_start = self.get_alpha(vid_target[:, 0, :, :, :])
 
-		bs = chunk_size
-		chunks = t // bs
+        z_s2r, feat_rgb = self.enc.enc_2r(img_source)
+        alpha_r2s = self.enc.enc_r2t(z_s2r)
+        alpha_r2s[:, d_l] = alpha_r2s[:, d_l] + tup2t(v_l)
 
-		alpha_start_r = repeat(alpha_start, 'b c -> (repeat b) c', repeat=bs)
-		alpha_r2s_r = repeat(alpha_r2s, 'b c -> (repeat b) c', repeat=bs)
-		feat_rgb_r = [repeat(feat, 'b c h w -> (repeat b) c h w', repeat=bs) for feat in feat_rgb]
-		z_s2r_r = repeat(z_s2r, 'b c -> (repeat b) c', repeat=bs)
+        bs = chunk_size
+        chunks = t // bs
 
-		vid_target_recon = []
-		for i in range(chunks + 1):
-			if i == chunks:
-				img_target = vid_target[:, i * bs:, :, :, :]
-				bs = t - i * bs
-				alpha_start_r = alpha_start_r[:bs]	# alpha_start.repeat(bs,1)
-				alpha_r2s_r = alpha_r2s_r[:bs]	# alpha_r2s.repeat(bs,1)
-				feat_rgb_r = [feat[:bs] for feat in feat_rgb_r]  # [feat.repeat(bs,1,1,1) for feat in feat_rgb]
-				z_s2r_r = z_s2r_r[:bs]	# z_s2r.repeat(bs,1)
-			else:
-				img_target = vid_target[:, i * bs:(i + 1) * bs, :, :, :]
+        alpha_start_r = repeat(alpha_start, 'b c -> (repeat b) c', repeat=bs)
+        alpha_r2s_r = repeat(alpha_r2s, 'b c -> (repeat b) c', repeat=bs)
+        feat_rgb_r = [repeat(feat, 'b c h w -> (repeat b) c h w', repeat=bs) for feat in feat_rgb]
+        z_s2r_r = repeat(z_s2r, 'b c -> (repeat b) c', repeat=bs)
 
-			alpha = self.enc.enc_transfer_vid(alpha_r2s_r, img_target.squeeze(0), alpha_start_r)
-			img_recon = self.dec(z_s2r_r, alpha, feat_rgb_r)  # bs x 3 x h x w
-			vid_target_recon.append(img_recon)
-		vid_target_recon = torch.cat(vid_target_recon, dim=0).unsqueeze(0)	# 1xTCHW
-		vid_target_recon = rearrange(vid_target_recon, 'b t c h w -> b c t h w')
+        vid_target_recon = []
+        for i in range(chunks + 1):
+            if i == chunks:
+                img_target = vid_target[:, i * bs:, :, :, :]
+                bs = t - i * bs
+                alpha_start_r = alpha_start_r[:bs]    # alpha_start.repeat(bs,1)
+                alpha_r2s_r = alpha_r2s_r[:bs]    # alpha_r2s.repeat(bs,1)
+                feat_rgb_r = [feat[:bs] for feat in feat_rgb_r]  # [feat.repeat(bs,1,1,1) for feat in feat_rgb]
+                z_s2r_r = z_s2r_r[:bs]    # z_s2r.repeat(bs,1)
+            else:
+                img_target = vid_target[:, i * bs:(i + 1) * bs, :, :, :]
 
-		return vid_target_recon
+            alpha = self.enc.enc_transfer_vid(alpha_r2s_r, img_target.squeeze(0), alpha_start_r)
+            img_recon = self.dec(z_s2r_r, alpha, feat_rgb_r)  # bs x 3 x h x w
+            vid_target_recon.append(img_recon)
+        vid_target_recon = torch.cat(vid_target_recon, dim=0).unsqueeze(0)    # 1xTCHW
+        vid_target_recon = rearrange(vid_target_recon, 'b t c h w -> b c t h w')
+
+        return vid_target_recon
 
 
-	def interpolate_img(self, img_source, d_l, v_l):
+    def interpolate_img(self, img_source, d_l, v_l):
 
-		vid_target_recon = []
+        vid_target_recon = []
 
-		step = 16
-		v_start = np.array([0.] * len(v_l))
-		v_end = np.array(v_l)
-		stride = (v_end - v_start) / step
+        step = 16
+        v_start = np.array([0.] * len(v_l))
+        v_end = np.array(v_l)
+        stride = (v_end - v_start) / step
 
-		z_s2r, feat_rgb = self.enc.enc_2r(img_source)
+        z_s2r, feat_rgb = self.enc.enc_2r(img_source)
 
-		v_tmp = v_start
-		for i in range(step):
-			v_tmp = v_tmp + stride
-			alpha = self.enc.enc_transfer_img(z_s2r, d_l, v_tmp)
-			img_recon = self.dec(z_s2r, alpha, feat_rgb)
-			vid_target_recon.append(img_recon.unsqueeze(2))
+        v_tmp = v_start
+        for i in range(step):
+            v_tmp = v_tmp + stride
+            alpha = self.enc.enc_transfer_img(z_s2r, d_l, v_tmp)
+            img_recon = self.dec(z_s2r, alpha, feat_rgb)
+            vid_target_recon.append(img_recon.unsqueeze(2))
 
-		for i in range(step):
-			v_tmp = v_tmp - stride
-			alpha = self.enc.enc_transfer_img(z_s2r, d_l, v_tmp)
-			img_recon = self.dec(z_s2r, alpha, feat_rgb)
-			vid_target_recon.append(img_recon.unsqueeze(2))
+        for i in range(step):
+            v_tmp = v_tmp - stride
+            alpha = self.enc.enc_transfer_img(z_s2r, d_l, v_tmp)
+            img_recon = self.dec(z_s2r, alpha, feat_rgb)
+            vid_target_recon.append(img_recon.unsqueeze(2))
 
-		if (v_l[6]!=0) or (v_l[7]!=0) or (v_l[8]!=0) or (v_l[9]!=0):
-			for i in range(step):
-				v_tmp = v_tmp + stride
-				alpha = self.enc.enc_transfer_img(z_s2r, d_l, v_tmp)
-				img_recon = self.dec(z_s2r, alpha, feat_rgb)
-				vid_target_recon.append(img_recon.unsqueeze(2))
+        if (v_l[6]!=0) or (v_l[7]!=0) or (v_l[8]!=0) or (v_l[9]!=0):
+            for i in range(step):
+                v_tmp = v_tmp + stride
+                alpha = self.enc.enc_transfer_img(z_s2r, d_l, v_tmp)
+                img_recon = self.dec(z_s2r, alpha, feat_rgb)
+                vid_target_recon.append(img_recon.unsqueeze(2))
 
-			for i in range(step):
-				v_tmp = v_tmp - stride
-				alpha = self.enc.enc_transfer_img(z_s2r, d_l, v_tmp)
-				img_recon = self.dec(z_s2r, alpha, feat_rgb)
-				vid_target_recon.append(img_recon.unsqueeze(2))
-		else:
-			for i in range(step):
-				v_tmp = v_tmp - stride
-				alpha = self.enc.enc_transfer_img(z_s2r, d_l, v_tmp)
-				img_recon = self.dec(z_s2r, alpha, feat_rgb)
-				vid_target_recon.append(img_recon.unsqueeze(2))
+            for i in range(step):
+                v_tmp = v_tmp - stride
+                alpha = self.enc.enc_transfer_img(z_s2r, d_l, v_tmp)
+                img_recon = self.dec(z_s2r, alpha, feat_rgb)
+                vid_target_recon.append(img_recon.unsqueeze(2))
+        else:
+            for i in range(step):
+                v_tmp = v_tmp - stride
+                alpha = self.enc.enc_transfer_img(z_s2r, d_l, v_tmp)
+                img_recon = self.dec(z_s2r, alpha, feat_rgb)
+                vid_target_recon.append(img_recon.unsqueeze(2))
 
-			for i in range(step):
-				v_tmp = v_tmp + stride
-				alpha = self.enc.enc_transfer_img(z_s2r, d_l, v_tmp)
-				img_recon = self.dec(z_s2r, alpha, feat_rgb)
-				vid_target_recon.append(img_recon.unsqueeze(2))
+            for i in range(step):
+                v_tmp = v_tmp + stride
+                alpha = self.enc.enc_transfer_img(z_s2r, d_l, v_tmp)
+                img_recon = self.dec(z_s2r, alpha, feat_rgb)
+                vid_target_recon.append(img_recon.unsqueeze(2))
 
-		vid_target_recon = torch.cat(vid_target_recon, dim=2)  # BCTHW
+        vid_target_recon = torch.cat(vid_target_recon, dim=2)  # BCTHW
 
-		return vid_target_recon
+        return vid_target_recon
 

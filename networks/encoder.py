@@ -4,6 +4,8 @@ from torch import nn
 from torch.nn import functional as F
 from .ops import (EqualConv2d, EqualLinear, ConvLayer)
 
+def tup2t(tup):
+    return torch.tensor(tup, dtype=torch.half, device='cuda', requires_grad=False).unsqueeze(0)
 
 class ResBlock(nn.Module):
 	def __init__(self, in_channel, out_channel):
@@ -105,7 +107,7 @@ class Encoder(nn.Module):
 	def enc_transfer_img(self, z_s2r, d_l, s_l):
 
 		alpha_r2s = self.enc_r2t(z_s2r)
-		alpha_r2s[:, d_l] = alpha_r2s[:, d_l] + torch.FloatTensor(s_l).unsqueeze(0).to('cuda')
+		alpha_r2s[:, d_l] = alpha_r2s[:, d_l] + tup2t(s_l)
 		alpha = [alpha_r2s]
 
 		return alpha
