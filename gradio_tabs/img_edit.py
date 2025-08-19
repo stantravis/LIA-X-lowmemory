@@ -101,7 +101,7 @@ def vid_denorm(vid):
 def img_postprocessing(image, w, h, output_path=output_dir + "/output_img.png"):
 
 	image = resize_back(image, w, h)
-	image = image.permute(0, 2, 3, 1)
+	image = image.permute(0, 2, 3, 1).float()
 	edited_image = img_denorm(image)
 	img_output = (edited_image[0].numpy() * 255).astype(np.uint8)
 	imageio.imwrite(output_path, img_output, quality=6)
@@ -131,9 +131,10 @@ def img_edit(gen, device):
 	def edit_img(image, *selected_s):
 
 		image_tensor, w, h = img_preprocessing(image, 512)
-		image_tensor = image_tensor.to(device)
+		image_tensor = image_tensor.to(device).half()
 
 		edited_image_tensor = gen.edit_img(image_tensor, labels_v, selected_s)
+		torch.cuda.empty_cache()
 
 		# de-norm
 		edited_image = img_postprocessing(edited_image_tensor, w, h)

@@ -140,10 +140,11 @@ def vid_edit(gen, chunk_size, device):
 	def edit_img(video, *selected_s):
 
 		vid_target_tensor, fps, w, h = vid_preprocessing(video, 512)
-		video_target_tensor = vid_target_tensor.to(device)
+		video_target_tensor = vid_target_tensor.to(device).half()
 		image_tensor = video_target_tensor[:,0,:,:,:]
 
 		edited_image_tensor = gen.edit_img(image_tensor, labels_v, selected_s)
+		torch.cuda.empty_cache()
 
 		# de-norm
 		edited_image = img_postprocessing(edited_image_tensor, w, h)
@@ -155,9 +156,10 @@ def vid_edit(gen, chunk_size, device):
 	def edit_vid(video, *selected_s):
 
 		video_target_tensor, fps, w, h = vid_preprocessing(video, 512) # btchw
-		video_target_tensor = video_target_tensor.to(device)
+		video_target_tensor = video_target_tensor.to(device).half()
 
 		edited_video_tensor = gen.edit_vid_batch(video_target_tensor, labels_v, selected_s, chunk_size) #bcthw
+		torch.cuda.empty_cache()
 		edited_image_tensor = edited_video_tensor[:,:,0,:,:]	   
 
 		# de-norm
