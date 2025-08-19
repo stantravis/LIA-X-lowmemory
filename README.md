@@ -1,7 +1,7 @@
 ## Low memory fork
 - FP16 inference, ~2x faster
 - Memory-adaptive, 6 Gb GPU minimal
-- Pure Python fallback for kernels if compilation is unavailable
+- Pure PyTorch fallback for kernels if compilation is unavailable
 ---
 
 # LIA-X: Interpretable Latent Portrait Animator
