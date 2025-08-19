@@ -1,3 +1,9 @@
+## Low memory fork
+- FP16 inference, ~2x faster
+- Memory-adaptive, 6 Gb GPU minimal
+- Pure Python fallback for kernels if compilation is unavailable
+---
+
 # LIA-X: Interpretable Latent Portrait Animator
 [Yaohui Wang](https://wyhsirius.github.io/), [Di Yang](https://walker1126.github.io/), [Xinyuan Chen](https://scholar.google.com/citations?user=3fWSC8YAAAAJ&hl=zh-CN), [François Brémond](https://www-sop.inria.fr/members/Francois.Bremond/), [Yu Qiao](https://scholar.google.com/citations?user=gFtI-8QAAAAJ&hl=en), [Antitza Dantcheva](https://www-sop.inria.fr/members/Antitza.Dantcheva/)
 
