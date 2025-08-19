@@ -30,6 +30,7 @@ if 1:
     total_memory = torch.cuda.get_device_properties(device).total_memory / (1024 ** 3)
     if total_memory < 8: chunk_size = 2
     elif total_memory < 12: chunk_size = 4
+    elif total_memory < 16: chunk_size = 6
     print ('Adaptive chunk size:',chunk_size)
 
 def load_file(path):
