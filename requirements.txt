@@ -1,3 +1,5 @@
+#torch
+#torchvision
 einops>=0.8.1
 face_alignment>=1.4.1
 gradio>=5.41.1
