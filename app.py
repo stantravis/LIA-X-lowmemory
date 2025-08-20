@@ -17,7 +17,7 @@ from networks.generator import Generator
 device = torch.device("cuda")
 gen = Generator(size=512, motion_dim=40, scale=2).eval().to(device).to(torch.float16)
 ckpt_path = 'model/lia-x.pt'
-assert os.path.exists(ckpt_path),'Download "lia-x.pt" and place it in the "models/" folder'
+assert os.path.exists(ckpt_path),'Download "lia-x.pt" and place it in the "model/" folder'
 gen.load_state_dict(torch.load(ckpt_path, weights_only=True))
 #gen.eval().to(torch.float16) 
 torch.cuda.empty_cache()
