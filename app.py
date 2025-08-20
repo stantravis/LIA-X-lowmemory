@@ -19,19 +19,18 @@ gen = Generator(size=512, motion_dim=40, scale=2).eval().to(device).to(torch.flo
 ckpt_path = "../../../LIAX-release/model/lia-x.pt"
 if not os.path.exists(ckpt_path):
     ckpt_path = 'model/lia-x.pt'
-    assert os.path.exists(ckpt_path)
+    assert os.path.exists(ckpt_path),'Download "lia-x.pt" and place it in the "model/" folder'
 gen.load_state_dict(torch.load(ckpt_path, weights_only=True))
 #gen.eval().to(torch.float16) 
 torch.cuda.empty_cache()
 
 chunk_size=8 # number of frames to be generated at the same time
-
 if 1:
-    total_memory = torch.cuda.get_device_properties(device).total_memory / (1024 ** 3)
+    total_memory = round(torch.cuda.get_device_properties(device).total_memory / (1024 ** 3))
     if total_memory < 8: chunk_size = 2
     elif total_memory < 12: chunk_size = 4
     elif total_memory < 16: chunk_size = 6
-    print ('Adaptive chunk size:',chunk_size)
+    print (f'Total memory: {total_memory} Gb | Adaptive chunk size: {chunk_size}')
 
 def load_file(path):
 
