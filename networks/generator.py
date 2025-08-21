@@ -73,6 +73,7 @@ class Generator(nn.Module):
             if i == chunks:
                 img_target = vid_target[:, i*bs:, :, :, :]
                 bs = t-i*bs
+                if bs < 1: break # fix error bs=0
                 alpha_start_r = alpha_start_r[:bs] #alpha_start.repeat(bs,1)
                 alpha_r2s_r = alpha_r2s_r[:bs] #alpha_r2s.repeat(bs,1)
                 feat_rgb_r = [feat[:bs] for feat in feat_rgb_r]#[feat.repeat(bs,1,1,1) for feat in feat_rgb]
